@@ -43,27 +43,25 @@ func NewWorkerPool(numberOfWorkers int, queueSize int) *WorkerPool {
 }
 
 // Submit - добавить таску в воркер пул
-func (wp *WorkerPool) Submit(task func()) {
+func (wp *WorkerPool) Submit(task func()) bool {
 	wp.m.Lock()
 	if wp.stopAllTasks {
 		wp.m.Unlock()
-		return
+		return false
 	}
-	wp.m.Unlock()
-
 	wp.wg.Add(1)
 	wp.taskQueue <- task
+	wp.m.Unlock()
+	return true
 }
 
 // SubmitWait - добавить таску в воркер пул и дождаться окончания ее выполнения
-func (wp *WorkerPool) SubmitWait(task func()) {
+func (wp *WorkerPool) SubmitWait(task func()) bool {
 	wp.m.Lock()
 	if wp.stopAllTasks {
 		wp.m.Unlock()
-		return
+		return false
 	}
-	wp.m.Unlock()
-
 	ch := make(chan struct{})
 	wp.wg.Add(1)
 
@@ -72,12 +70,19 @@ func (wp *WorkerPool) SubmitWait(task func()) {
 		ch <- struct{}{}
 	}
 
+	wp.m.Unlock()
+
 	<-ch
+	return true
 }
 
 // Stop - остановить воркер пул, дождаться выполнения только тех тасок,
 // которые выполняются сейчас
 func (wp *WorkerPool) Stop() {
+	wp.m.Lock()
+	wp.stopAllTasks = true
+	wp.m.Unlock()
+
 	close(wp.stopCh)
 	close(wp.taskQueue)
 	wp.wg.Wait()
