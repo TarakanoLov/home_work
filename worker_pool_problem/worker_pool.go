@@ -6,7 +6,8 @@ import (
 
 type WorkerPool struct {
 	taskQueue    chan func()
-	wg           sync.WaitGroup
+	wgAll        sync.WaitGroup
+	wgRunning    sync.WaitGroup
 	stopCh       chan struct{}
 	m            sync.Mutex
 	stopAllTasks bool
@@ -20,8 +21,10 @@ func startWorker(wp *WorkerPool) {
 		default:
 			task := <-wp.taskQueue
 			if task != nil {
+				wp.wgRunning.Add(1)
 				task()
-				wp.wg.Done()
+				wp.wgRunning.Done()
+				wp.wgAll.Done()
 			} else {
 				return
 			}
@@ -49,7 +52,7 @@ func (wp *WorkerPool) Submit(task func()) bool {
 		wp.m.Unlock()
 		return false
 	}
-	wp.wg.Add(1)
+	wp.wgAll.Add(1)
 	wp.taskQueue <- task
 	wp.m.Unlock()
 	return true
@@ -63,7 +66,7 @@ func (wp *WorkerPool) SubmitWait(task func()) bool {
 		return false
 	}
 	ch := make(chan struct{})
-	wp.wg.Add(1)
+	wp.wgAll.Add(1)
 
 	wp.taskQueue <- func() {
 		task()
@@ -85,7 +88,7 @@ func (wp *WorkerPool) Stop() {
 
 	close(wp.stopCh)
 	close(wp.taskQueue)
-	wp.wg.Wait()
+	wp.wgRunning.Wait()
 }
 
 // StopWait - остановить воркер пул, дождаться выполнения всех тасок,
@@ -95,5 +98,5 @@ func (wp *WorkerPool) StopWait() {
 	wp.stopAllTasks = true
 	wp.m.Unlock()
 
-	wp.wg.Wait()
+	wp.wgAll.Wait()
 }
